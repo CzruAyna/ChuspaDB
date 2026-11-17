@@ -1,0 +1,42 @@
+name: Validación de ChuspaDB 1428 y 1439
+on:
+  push:
+    branches: [codex/validar-chuspadb-1428-1439]
+permissions:
+  contents: read
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ['17', '21']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+      - name: Extraer dev y ambos commits
+        shell: bash
+        run: |
+          for caso in base:681d0a3acea0c2209b82b64a740efc9e0c8cd061 1428:231a1d61ca87263f02bfc1b518f62a55ca17a0f2 1439:0f3da5541ae06a72da6cfefb53aeeead39cb3db8; do
+            destino="$RUNNER_TEMP/db-${caso%:*}"
+            mkdir -p "$destino"
+            git archive "${caso#*:}" | tar -xf - -C "$destino"
+          done
+      - name: Suite específica de EjecutorQuery con SQLite
+        run: python3 .validation/validar_db_1428_1439.py 1428 --repo "$RUNNER_TEMP/db-1428" --descargar
+      - name: Suite específica de ImportadorJSON con SQLite
+        run: python3 .validation/validar_db_1428_1439.py 1439 --repo "$RUNNER_TEMP/db-1439" --descargar
+      - name: Comparar Maven con la base
+        run: python3 .validation/comparar_maven_db_17nov.py "$RUNNER_TEMP/db-base" "$RUNNER_TEMP/db-1428" "$RUNNER_TEMP/db-1439" --salida "$RUNNER_TEMP/resultados"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: maven-java-${{ matrix.java }}
+          path: ${{ runner.temp }}/resultados/*-maven.log
+          if-no-files-found: ignore
